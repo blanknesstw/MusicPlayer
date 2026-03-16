@@ -37,6 +37,10 @@ import kotlinx.coroutines.delay
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.filled.MusicNote
 
 @Composable
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -53,14 +57,18 @@ fun PlayerScreen(
     lrcOffset: Long,
     onSettingsClick: () -> Unit,
     isFavorite: Boolean,
-    onFavoriteToggle: () -> Unit
+    onFavoriteToggle: () -> Unit,
+    bgUri: String?,
 ) {    val context = LocalContext.current
 
     // 背景影片 player
-
-    val bgPlayer = remember {
+    val bgPlayer = remember(bgUri) {
         ExoPlayer.Builder(context).build().apply {
-            val uri = Uri.parse("android.resource://${context.packageName}/raw/bg_ayanami")
+            val uri = if (bgUri != null) {
+                android.net.Uri.parse(bgUri)
+            } else {
+                android.net.Uri.parse("android.resource://${context.packageName}/raw/bg_ayanami")
+            }
             setMediaItem(MediaItem.fromUri(uri))
             prepare()
             playWhenReady = true
@@ -163,11 +171,30 @@ fun PlayerScreen(
                     Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = Color.White)
                 }
                 Spacer(modifier = Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .background(Color(0xFF2A1A4E), shape = RoundedCornerShape(8.dp))
-                )
+                if (song?.albumArtUri != null) {
+                    AsyncImage(
+                        model = song.albumArtUri,
+                        contentDescription = "封面",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(Color(0xFF2A1A4E), shape = RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.MusicNote,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.5f),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     MarqueeText(

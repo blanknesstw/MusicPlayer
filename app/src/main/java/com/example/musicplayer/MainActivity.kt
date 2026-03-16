@@ -21,6 +21,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import android.content.ComponentName
 import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
 
 class MainActivity : ComponentActivity() {
 
@@ -74,6 +75,24 @@ class MainActivity : ComponentActivity() {
                 var repeatMode by remember { mutableStateOf(0) }
                 var lrcOffset by remember { mutableStateOf(0L) }
                 var isFavorite by remember { mutableStateOf(false) }
+                var currentBgUri by remember { mutableStateOf<String?>(null) }
+
+                val bgPickerLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.GetContent()
+                ) { uri ->
+                    uri?.let {
+                        // 讓 app 永久存取這個檔案
+                        context.contentResolver.takePersistableUriPermission(
+                            it,
+                            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                        val uriString = it.toString()
+                        songList.getOrNull(currentIndex)?.path?.let { path ->
+                            saveBgUri(context, path, uriString)
+                            currentBgUri = uriString
+                        }
+                    }
+                }
 
                 // 切歌時更新 player
                 LaunchedEffect(currentIndex, songList, currentScreen) {
@@ -95,7 +114,10 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(currentIndex, songList) {
                     val song = songList.getOrNull(currentIndex)
                     lrcOffset = song?.path?.let { loadOffset(context, it) } ?: 0L
-                    isFavorite = song?.path?.let { FavoritesRepository.isFavorite(context, it) } ?: false
+                    isFavorite = song?.path?.let { FavoritesRepository.isFavorite(context,
+                        it) } ?: false
+                    currentBgUri = song?.path?.let { loadBgUri(context, it) }
+                    currentBgUri = song?.path?.let { loadBgUri(context, it) }
                 }
 
                 // 監聽播放結束
@@ -133,7 +155,8 @@ class MainActivity : ComponentActivity() {
                             songList = songs
                             currentIndex = songs.indexOf(song)
                             currentScreen = "player"
-                        }
+                        },
+                        currentSong = songList.getOrNull(currentIndex),
                     )
                     "player" -> PlayerScreen(
                         song = songList.getOrNull(currentIndex),
@@ -167,6 +190,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         },
+                        bgUri = currentBgUri,
                     )
                     "settings" -> SettingsScreen(
                         song = songList.getOrNull(currentIndex),
@@ -178,7 +202,9 @@ class MainActivity : ComponentActivity() {
                                 saveOffset(context, it, lrcOffset)
                             }
                         },
-                        onBack = { currentScreen = "player" }
+                        onBack = { currentScreen = "player" },
+                        onPickBackground = { bgPickerLauncher.launch("video/*") },
+                        currentBgUri = currentBgUri,
                     )
                 }
             }
@@ -196,6 +222,18 @@ fun saveOffset(context: Context, songPath: String, offset: Long) {
         .edit()
         .putLong(songPath, offset)
         .apply()
+}
+
+fun saveBgUri(context: Context, songPath: String, uri: String) {
+    context.getSharedPreferences("bg_uris", Context.MODE_PRIVATE)
+        .edit()
+        .putString(songPath, uri)
+        .apply()
+}
+
+fun loadBgUri(context: Context, songPath: String): String? {
+    return context.getSharedPreferences("bg_uris", Context.MODE_PRIVATE)
+        .getString(songPath, null)
 }
 
 fun loadOffset(context: Context, songPath: String): Long {

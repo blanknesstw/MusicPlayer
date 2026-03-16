@@ -30,7 +30,10 @@ import com.example.musicplayer.FavoritesRepository
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 @Composable
-fun SongListScreen(onSongClick: (Song, List<Song>) -> Unit) {
+fun SongListScreen(
+    onSongClick: (Song, List<Song>) -> Unit,
+    currentSong: Song?
+) {
     val context = LocalContext.current
     val allSongs = remember { MusicRepository.getSongs(context) }
 
@@ -184,11 +187,13 @@ fun SongListScreen(onSongClick: (Song, List<Song>) -> Unit) {
 
             LazyColumn {
                 items(songs) { song ->
+                    val isPlaying = song.path == currentSong?.path
                     Row(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSongClick(song, songs) }
-                            .padding(horizontal = 28.dp, vertical = 12.dp),
+                        .fillMaxWidth()
+                        .clickable { onSongClick(song, songs) }
+                        .background(if (isPlaying) Color.White.copy(alpha = 0.08f) else Color.Transparent)
+                        .padding(horizontal = 28.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
@@ -208,7 +213,7 @@ fun SongListScreen(onSongClick: (Song, List<Song>) -> Unit) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = song.title,
-                                color = Color.White,
+                                color = if (isPlaying) Color(0xFF8B7FDD) else Color.White,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Medium,
                                 maxLines = 1,
