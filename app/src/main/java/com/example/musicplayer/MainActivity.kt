@@ -76,6 +76,15 @@ class MainActivity : ComponentActivity() {
                 var lrcOffset by remember { mutableStateOf(0L) }
                 var isFavorite by remember { mutableStateOf(false) }
                 var currentBgUri by remember { mutableStateOf<String?>(null) }
+                val restoreLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.GetContent()
+                ) { uri ->
+                    uri?.let {
+                        val path = it.path ?: return@let
+                        val success = BackupManager.restore(context, path)
+                        // 之後可以加通知
+                    }
+                }
 
                 val bgPickerLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.GetContent()
@@ -138,8 +147,18 @@ class MainActivity : ComponentActivity() {
                                             currentIndex + 1 else 0
                                     }
                                     else -> {
-                                        if (currentIndex < songList.size - 1)
+                                        if (currentIndex < songList.size - 1) {
                                             currentIndex++
+                                        } else {
+                                            currentIndex = 0
+                                            // 強制重新載入第一首
+                                            val song = songList.getOrNull(0)
+                                            song?.let {
+                                                player.setMediaItem(MediaItem.fromUri(it.uri))
+                                                player.prepare()
+                                                player.playWhenReady = true
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -205,6 +224,12 @@ class MainActivity : ComponentActivity() {
                         onBack = { currentScreen = "player" },
                         onPickBackground = { bgPickerLauncher.launch("video/*") },
                         currentBgUri = currentBgUri,
+                        onBackup = {
+                            BackupManager.backup(context)
+                        },
+                        onRestore = {
+                            restoreLauncher.launch("application/json")
+                        },
                     )
                 }
             }

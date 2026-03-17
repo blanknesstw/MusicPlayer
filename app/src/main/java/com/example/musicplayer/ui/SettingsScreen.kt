@@ -31,7 +31,9 @@ fun SettingsScreen(
     onSave: () -> Unit,
     onBack: () -> Unit,
     onPickBackground: () -> Unit,
-    currentBgUri: String?
+    currentBgUri: String?,
+    onBackup: () -> Unit,
+    onRestore: () -> Unit,
 ) {
     val lrcLines = remember(song) {
         song?.let { MusicRepository.getLrc(it) } ?: emptyList()
@@ -103,6 +105,42 @@ fun SettingsScreen(
                         text = if (currentBgUri != null) "已設定背景 ✓" else "選擇背景影片或圖片",
                         color = Color.White
                     )
+                }
+                Spacer(modifier = Modifier.height(32.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+                Spacer(modifier = Modifier.height(32.dp))
+
+// 備份還原區
+                Text(
+                    text = "備份與還原",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Button(
+                        onClick = onBackup,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.White.copy(alpha = 0.15f)
+                        )
+                    ) {
+                        Text("備份設定", color = Color.White)
+                    }
+                    Button(
+                        onClick = onRestore,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.White.copy(alpha = 0.15f)
+                        )
+                    ) {
+                        Text("還原設定", color = Color.White)
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
@@ -212,7 +250,6 @@ fun SettingsScreen(
                 Button(
                     onClick = {
                         onSave()
-                        onOffsetChange(0L)
                         showSaveAnimation = true
                     },
                     modifier = Modifier.fillMaxWidth(),
