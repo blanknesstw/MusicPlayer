@@ -76,13 +76,13 @@ class MainActivity : ComponentActivity() {
                 var lrcOffset by remember { mutableStateOf(0L) }
                 var isFavorite by remember { mutableStateOf(false) }
                 var currentBgUri by remember { mutableStateOf<String?>(null) }
+
                 val restoreLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.GetContent()
                 ) { uri ->
                     uri?.let {
                         val path = it.path ?: return@let
-                        val success = BackupManager.restore(context, path)
-                        // 之後可以加通知
+                        BackupManager.restore(context, path)
                     }
                 }
 
@@ -90,7 +90,6 @@ class MainActivity : ComponentActivity() {
                     contract = ActivityResultContracts.GetContent()
                 ) { uri ->
                     uri?.let {
-                        // 讓 app 永久存取這個檔案
                         context.contentResolver.takePersistableUriPermission(
                             it,
                             android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -103,65 +102,25 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // 切歌時更新 player
-                LaunchedEffect(currentIndex, songList, currentScreen) {
-                    if (currentScreen == "player") {
-                        val song = songList.getOrNull(currentIndex)
-                        song?.let {
-                            if (player.currentMediaItem?.localConfiguration?.uri != it.uri) {
-                                player.setMediaItem(MediaItem.fromUri(it.uri))
-                                player.prepare()
-                                player.playWhenReady = true
-                            } else {
-                                player.playWhenReady = true
-                            }
-                        }
-                    }
-                }
-
-                // 切歌時載入 offset
+                // 切歌時載入對應的 offset、最愛狀態、背景
                 LaunchedEffect(currentIndex, songList) {
                     val song = songList.getOrNull(currentIndex)
                     lrcOffset = song?.path?.let { loadOffset(context, it) } ?: 0L
-                    isFavorite = song?.path?.let { FavoritesRepository.isFavorite(context,
-                        it) } ?: false
-                    currentBgUri = song?.path?.let { loadBgUri(context, it) }
+                    isFavorite = song?.path?.let { FavoritesRepository.isFavorite(context, it) } ?: false
                     currentBgUri = song?.path?.let { loadBgUri(context, it) }
                 }
 
-                // 監聽播放結束
+                // 監聽 Media3 自動切歌（例如通知列按下一首）同步更新 UI 的 currentIndex
                 DisposableEffect(player) {
                     val listener = object : Player.Listener {
-                        override fun onPlaybackStateChanged(state: Int) {
-                            if (state == Player.STATE_ENDED) {
-                                when {
-                                    repeatMode == 2 -> {
-                                        player.seekTo(0)
-                                        player.play()
-                                    }
-                                    isShuffling -> {
-                                        currentIndex = (songList.indices - currentIndex).random()
-                                    }
-                                    repeatMode == 1 -> {
-                                        currentIndex = if (currentIndex < songList.size - 1)
-                                            currentIndex + 1 else 0
-                                    }
-                                    else -> {
-                                        if (currentIndex < songList.size - 1) {
-                                            currentIndex++
-                                        } else {
-                                            currentIndex = 0
-                                            // 強制重新載入第一首
-                                            val song = songList.getOrNull(0)
-                                            song?.let {
-                                                player.setMediaItem(MediaItem.fromUri(it.uri))
-                                                player.prepare()
-                                                player.playWhenReady = true
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                            val newIndex = player.currentMediaItemIndex
+                            currentIndex = newIndex
+                            // 同步歌曲資訊
+                            val song = songList.getOrNull(newIndex)
+                            lrcOffset = song?.path?.let { loadOffset(context, it) } ?: 0L
+                            isFavorite = song?.path?.let { FavoritesRepository.isFavorite(context, it) } ?: false
+                            currentBgUri = song?.path?.let { loadBgUri(context, it) }
                         }
                     }
                     player.addListener(listener)
@@ -171,8 +130,35 @@ class MainActivity : ComponentActivity() {
                 when (currentScreen) {
                     "list" -> SongListScreen(
                         onSongClick = { song, songs ->
-                            songList = songs
-                            currentIndex = songs.indexOf(song)
+                            val clickedIndex = songs.indexOf(song)
+
+                            // 直接比較 player 實際載入的歌單
+                            val currentPlayerPaths = (0 until player.mediaItemCount)
+                                .map { player.getMediaItemAt(it).localConfiguration?.uri.toString() }
+                            val newPaths = songs.map { it.uri.toString() }
+
+                            when {
+                                currentPlayerPaths != newPaths -> {
+                                    // player 的歌單跟新歌單不同，重設
+                                    songList = songs
+                                    val mediaItems = songs.map { MediaItem.fromUri(it.uri) }
+                                    player.setMediaItems(mediaItems, clickedIndex, 0L)
+                                    player.prepare()
+                                    player.playWhenReady = true
+                                }
+                                player.currentMediaItemIndex != clickedIndex -> {
+                                    // 歌單一樣但點了不同的歌，跳過去
+                                    songList = songs
+                                    player.seekToDefaultPosition(clickedIndex)
+                                    player.playWhenReady = true
+                                }
+                                else -> {
+                                    songList = songs
+                                }
+                                // 歌單一樣且同一首歌：什麼都不做
+                            }
+
+                            currentIndex = clickedIndex
                             currentScreen = "player"
                         },
                         currentSong = songList.getOrNull(currentIndex),
@@ -181,20 +167,22 @@ class MainActivity : ComponentActivity() {
                         song = songList.getOrNull(currentIndex),
                         musicPlayer = player,
                         onBack = { currentScreen = "list" },
-                        onNext = {
-                            if (isShuffling) {
-                                currentIndex = (songList.indices - currentIndex).random()
-                            } else {
-                                if (currentIndex < songList.size - 1) currentIndex++
+                        onNext = { player.seekToNextMediaItem() },
+                        onPrevious = { player.seekToPreviousMediaItem() },
+                        isShuffling = isShuffling,
+                        onShuffleToggle = {
+                            isShuffling = !isShuffling
+                            player.shuffleModeEnabled = isShuffling
+                        },
+                        repeatMode = repeatMode,
+                        onRepeatToggle = {
+                            repeatMode = (repeatMode + 1) % 3
+                            player.repeatMode = when (repeatMode) {
+                                1 -> Player.REPEAT_MODE_ALL
+                                2 -> Player.REPEAT_MODE_ONE
+                                else -> Player.REPEAT_MODE_OFF
                             }
                         },
-                        onPrevious = {
-                            if (currentIndex > 0) currentIndex--
-                        },
-                        isShuffling = isShuffling,
-                        onShuffleToggle = { isShuffling = !isShuffling },
-                        repeatMode = repeatMode,
-                        onRepeatToggle = { repeatMode = (repeatMode + 1) % 3 },
                         lrcOffset = lrcOffset,
                         onSettingsClick = { currentScreen = "settings" },
                         isFavorite = isFavorite,
